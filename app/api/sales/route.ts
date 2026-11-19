@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     const device = await getDeviceFromCookies();
 
     if (!device) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
     }
 
     const { searchParams } = new URL(req.url);
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     const device = await getDeviceFromCookies();
 
     if (!device) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
     }
 
     const body = (await req.json()) as SaleRequestWithClientId;

@@ -14,7 +14,7 @@ const FULL = "id, return_number, sale_id, reason, total_refund, refund_method, r
 export async function GET(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
     const saleId = searchParams.get("sale_id");
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json({ data: data ?? [] });
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }
 
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const { sale_id, items, client_op_id } = body ?? {};

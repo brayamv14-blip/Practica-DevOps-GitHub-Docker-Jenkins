@@ -7,7 +7,7 @@ import { DEFAULT_PUSH_PREFS, getVapidStatus } from "@/lib/push";
 export async function POST(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const endpoint = typeof body?.endpoint === "string" ? body.endpoint : null;
@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
       vapid: getVapidStatus(),
       subscriptions: { total: rows.length, thisDevice: mine.length },
       registered: !!current,
+      endpointHost: current ? (() => { try { return new URL(current.endpoint).host; } catch { return null; } })() : null,
       prefs: current ? { ...DEFAULT_PUSH_PREFS, ...(current.prefs ?? {}) } : null,
       health: current
         ? {
@@ -47,6 +48,6 @@ export async function POST(req: NextRequest) {
         : null,
     });
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }

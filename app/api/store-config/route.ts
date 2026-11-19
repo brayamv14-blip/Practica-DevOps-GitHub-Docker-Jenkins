@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbError } from "@/lib/api-error";
 import bcrypt from "bcryptjs";
 import { supabase } from "@/lib/supabase/server";
 import { getDeviceFromCookies } from "@/lib/auth";
 import { forbidUnlessAdmin } from "@/lib/guard";
+import { audit } from "@/lib/audit";
 
 export async function GET() {
   const device = await getDeviceFromCookies();
-  if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
   const { data, error } = await supabase
     .from("store_config")
@@ -14,14 +16,14 @@ export async function GET() {
     .eq("id", 1)
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError("store-config", error, 500);
   return NextResponse.json(data);
 }
 
 export async function PUT(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
     const forbidden = forbidUnlessAdmin(device);
     if (forbidden) return forbidden;
 
@@ -40,9 +42,18 @@ export async function PUT(req: NextRequest) {
       .select("store_name, updated_at")
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error("[store-config PUT]", error.message);
+      return NextResponse.json({ error: "No se pudo guardar la configuración." }, { status: 500 });
+    }
+    // Nunca se registra el valor del codigo, solo que cambio.
+    await audit(device, "store.update", "store_config", "1", {
+      store_name: Boolean(store_name?.trim()),
+      access_code_changed: Boolean(new_access_code?.trim()),
+    });
     return NextResponse.json(data);
   } catch (err) {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    console.error("[store-config PUT]", err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }

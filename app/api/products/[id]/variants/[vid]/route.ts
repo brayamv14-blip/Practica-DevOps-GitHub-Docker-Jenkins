@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbError } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/server";
 import { getDeviceFromCookies } from "@/lib/auth";
 import { audit } from "@/lib/audit";
@@ -7,7 +8,7 @@ import { validName, validPrice, validStock } from "@/lib/catalog-validation";
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string; vid: string }> }) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { id: product_id, vid } = await params;
     const { size_label, price, stock_qty, low_stock_threshold } = await req.json();
@@ -32,7 +33,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbError("products/[id]/variants/[vid]", error, 500);
 
     if (before && stock_qty !== undefined && Number(stock_qty) !== Number(before.stock_qty)) {
       await supabase.from("stock_adjustments").insert({
@@ -51,18 +52,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     });
     return NextResponse.json(data);
   } catch (err) {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string; vid: string }> }) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { id: product_id, vid } = await params;
     const { error } = await supabase.from("product_variants").delete().eq("id", vid);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbError("products/[id]/variants/[vid]", error, 500);
     await audit(device, "variant.delete", "product_variant", vid);
 
     // If no variants left, create default variant so product always has at least 1
@@ -85,6 +86,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }

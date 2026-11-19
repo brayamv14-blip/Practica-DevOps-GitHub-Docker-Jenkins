@@ -57,14 +57,16 @@ class Query implements PromiseLike<{ data: unknown; error: Err; count?: number |
   private orderBy: { col: string; asc: boolean } | null = null;
   private limitN: number | null = null;
   private rangeR: [number, number] | null = null;
+  private selectCols: string | null = null;
 
   constructor(
     private db: FakeDb,
     private table: string
   ) {}
 
-  select(_cols?: string, opts?: { count?: string; head?: boolean }) {
+  select(cols?: string, opts?: { count?: string; head?: boolean }) {
     if (this.op !== "select") this.returning = true;
+    if (cols) this.selectCols = cols;
     if (opts?.count) this.wantCount = true;
     if (opts?.head) this.headOnly = true;
     return this;
@@ -205,7 +207,7 @@ class Query implements PromiseLike<{ data: unknown; error: Err; count?: number |
     }
 
     const count = this.wantCount ? result.length : undefined;
-    const copy = result.map((r) => ({ ...r }));
+    const copy = result.map((r) => this.embed({ ...r }));
     const wantsRows = this.op === "select" || this.returning;
 
     if (this.singleMode !== "none") {
@@ -218,6 +220,39 @@ class Query implements PromiseLike<{ data: unknown; error: Err; count?: number |
       return { data: copy[0], error: null, count };
     }
     return { data: this.headOnly ? null : wantsRows ? copy : null, error: null, count };
+  }
+
+  /**
+   * Relaciones embebidas de PostgREST: `alias:tabla(*)`. Se resuelven por convencion de nombres:
+   * hijo -> padre con `<padre-singular>_id`, y padre -> hijos con `<este-singular>_id` en la otra tabla.
+   */
+  private embed(row: Row): Row {
+    if (this.op !== "select" || !this.selectCols || !this.selectCols.includes("(")) return row;
+    const singular = (t: string) => t.replace(/ies$/, "y").replace(/s$/, "");
+    let depth = 0, start = 0;
+    const parts: string[] = [];
+    for (let i = 0; i < this.selectCols.length; i++) {
+      const ch = this.selectCols[i];
+      if (ch === "(") depth++;
+      else if (ch === ")") depth--;
+      else if (ch === "," && depth === 0) { parts.push(this.selectCols.slice(start, i)); start = i + 1; }
+    }
+    parts.push(this.selectCols.slice(start));
+    for (const part of parts) {
+      const m = /^\s*(?:(\w+):)?(\w+)(?:![\w]+)?\(([\s\S]*)\)\s*$/.exec(part);
+      if (!m) continue;
+      const alias = m[1] ?? m[2];
+      const rel = m[2];
+      const relRows = this.db.rows(rel);
+      const childKey = `${singular(this.table)}_id`;
+      if (relRows.some((x) => childKey in x)) {
+        row[alias] = relRows.filter((x) => x[childKey] === row.id).map((x) => ({ ...x }));
+      } else {
+        const parent = relRows.find((x) => x.id === row[`${singular(rel)}_id`]);
+        row[alias] = parent ? { ...parent } : null;
+      }
+    }
+    return row;
   }
 
   then<T1, T2>(

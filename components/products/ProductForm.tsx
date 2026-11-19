@@ -13,6 +13,7 @@ import { QrLabelButton } from "@/components/products/QrLabelButton";
 import { ProductImageField } from "@/components/products/ProductImageField";
 import { enqueueOp, type UpdateProductPayload } from "@/lib/offline-ops";
 import { patchCachedProduct } from "@/lib/catalog-cache";
+import { useIsAdmin } from "@/contexts/RoleContext";
 import type { Product, ProductVariant, Category } from "@/types";
 
 interface ProductFormProps {
@@ -22,6 +23,9 @@ interface ProductFormProps {
 export function ProductForm({ product }: ProductFormProps) {
   const router = useRouter();
   const isEdit = !!product;
+  const isAdmin = useIsAdmin();
+  // Un empleado puede ajustar existencias de un producto, pero no editar su ficha, precios ni variantes.
+  const stockOnly = isEdit && !isAdmin;
 
   const [name, setName] = useState(product?.name ?? "");
   const [barcode, setBarcode] = useState(product?.barcode ?? "");
@@ -129,6 +133,39 @@ export function ProductForm({ product }: ProductFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return toast.error("El nombre es obligatorio");
+
+    if (stockOnly) {
+      if (!hasStockChanges) return toast.error("No hay cambios de existencias que guardar.");
+      if (!navigator.onLine) return toast.error("Necesitas conexión a internet para ajustar existencias.");
+      setSaving(true);
+      try {
+        let failed = 0;
+        for (const v of variants) {
+          if (!v.id) continue;
+          const original = originalStockMap.get(v.id);
+          const newQty = Number(v.stock_qty ?? 0);
+          if (original === undefined || newQty === original) continue;
+          const res = await apiFetch("/api/stock/adjust", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              product_id: product!.id,
+              variant_id: v.id,
+              qty_change: newQty - original,
+              note: adjustNote.trim() || null,
+            }),
+          });
+          if (!res.ok) failed++;
+        }
+        if (failed > 0) return toast.error("No se pudieron guardar todos los ajustes. Revisa e inténtalo de nuevo.");
+        toast.success("Existencias actualizadas");
+        router.push("/products");
+        router.refresh();
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
 
     setSaving(true);
     try {
@@ -356,23 +393,28 @@ export function ProductForm({ product }: ProductFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {stockOnly && (
+        <p role="note" className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-2">
+          Como empleado puedes ajustar las existencias. Para cambiar nombre, precios, variantes o eliminar el producto se necesita un administrador.
+        </p>
+      )}
       <div className="space-y-1">
         <Label>Nombre *</Label>
-        <Input placeholder="Nombre del producto" value={name} onChange={(e) => setName(e.target.value)} required />
+        <Input placeholder="Nombre del producto" value={name} onChange={(e) => setName(e.target.value)} required disabled={stockOnly} />
       </div>
 
       <div className="space-y-1">
         <Label>Código QR / barras <span className="text-muted-foreground">(opcional)</span></Label>
         <div className="flex gap-2">
-          <Input placeholder="Escanea o escribe el código" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
-          <ScannerButton onScan={setBarcode} />
+          <Input placeholder="Escanea o escribe el código" value={barcode} onChange={(e) => setBarcode(e.target.value)} disabled={stockOnly} />
+          {!stockOnly && <ScannerButton onScan={setBarcode} />}
         </div>
         <div className="pt-1">
           <QrLabelButton code={barcode} name={name} onGenerate={setBarcode} />
         </div>
       </div>
 
-      <ProductImageField value={imageUrl} onChange={setImageUrl} />
+      {!stockOnly && <ProductImageField value={imageUrl} onChange={setImageUrl} />}
 
       {/* Categoría */}
       <div className="space-y-1 relative">
@@ -381,6 +423,7 @@ export function ProductForm({ product }: ProductFormProps) {
           placeholder="Buscar o crear una categoría…"
           value={categoryInput}
           onChange={(e) => { setCategoryInput(e.target.value); setCategoryId(null); setShowCatSuggestions(true); }}
+          disabled={stockOnly}
           onFocus={() => setShowCatSuggestions(true)}
           onBlur={() => setTimeout(() => setShowCatSuggestions(false), 150)}
         />
@@ -402,14 +445,14 @@ export function ProductForm({ product }: ProductFormProps) {
 
       {/* Control de inventario */}
       <div className="flex items-center gap-2">
-        <input type="checkbox" id="track_stock" checked={trackStock} onChange={(e) => setTrackStock(e.target.checked)} className="h-4 w-4" />
+        <input type="checkbox" id="track_stock" checked={trackStock} onChange={(e) => setTrackStock(e.target.checked)} disabled={stockOnly} className="h-4 w-4" />
         <Label htmlFor="track_stock">Controlar cantidad en inventario</Label>
         {!trackStock && <span className="text-xs text-muted-foreground">No se contará ni se limitará el inventario</span>}
       </div>
 
       {trackStock && (
         <div className="flex items-center gap-2">
-          <input type="checkbox" id="low_stock_alert" checked={lowStockAlertEnabled} onChange={(e) => setLowStockAlertEnabled(e.target.checked)} className="h-4 w-4" />
+          <input type="checkbox" id="low_stock_alert" checked={lowStockAlertEnabled} onChange={(e) => setLowStockAlertEnabled(e.target.checked)} disabled={stockOnly} className="h-4 w-4" />
           <Label htmlFor="low_stock_alert">Alerta de inventario bajo</Label>
           {!lowStockAlertEnabled && <span className="text-xs text-muted-foreground">No se avisará cuando quede poco inventario</span>}
         </div>
@@ -421,25 +464,27 @@ export function ProductForm({ product }: ProductFormProps) {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <Label>Tamaños / Variantes</Label>
-          <Button type="button" size="sm" variant="outline" onClick={addVariant}>+ Agregar tamaño</Button>
+          {!stockOnly && <Button type="button" size="sm" variant="outline" onClick={addVariant}>+ Agregar tamaño</Button>}
         </div>
 
         {variants.map((v) => (
           <div key={v.tempId} className="bg-zinc-50 rounded-xl p-3 space-y-2">
             <div className="flex items-center justify-between">
               <Badge variant="secondary">{v.size_label || "—"}</Badge>
-              <Button type="button" size="sm" variant="ghost" className="text-red-500 h-7"
-                onClick={() => removeVariant(v.tempId!)}>Quitar</Button>
+              {!stockOnly && (
+                <Button type="button" size="sm" variant="ghost" className="text-red-500 h-7"
+                  onClick={() => removeVariant(v.tempId!)}>Quitar</Button>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label className="text-xs">Nombre del tamaño <span className="text-muted-foreground">(opcional)</span></Label>
                 <Input placeholder="Ej. 500 g, Grande" value={v.size_label ?? ""}
-                  onChange={(e) => updateVariant(v.tempId!, "size_label", e.target.value)} />
+                  disabled={stockOnly} onChange={(e) => updateVariant(v.tempId!, "size_label", e.target.value)} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Precio (MXN) *</Label>
-                <Input type="number" placeholder="0" value={v.price ?? ""}
+                <Input type="number" placeholder="0" value={v.price ?? ""} disabled={stockOnly}
                   onChange={(e) => updateVariant(v.tempId!, "price", Number(e.target.value))} />
               </div>
               {canSeeCost && v.id && (
@@ -459,7 +504,7 @@ export function ProductForm({ product }: ProductFormProps) {
               {trackStock && lowStockAlertEnabled && (
                 <div className="space-y-1">
                   <Label className="text-xs">Límite para alerta</Label>
-                  <Input type="number" placeholder="5" value={v.low_stock_threshold ?? ""}
+                  <Input type="number" placeholder="5" value={v.low_stock_threshold ?? ""} disabled={stockOnly}
                     onChange={(e) => updateVariant(v.tempId!, "low_stock_threshold", Number(e.target.value))} />
                 </div>
               )}
@@ -480,7 +525,7 @@ export function ProductForm({ product }: ProductFormProps) {
         <Button type="submit" className="flex-1" disabled={saving}>
           {saving ? "Guardando…" : isEdit ? "Guardar cambios" : "Agregar producto"}
         </Button>
-        {isEdit && (
+        {isEdit && isAdmin && (
           <Button type="button" variant="destructive" onClick={handleDelete}>Eliminar</Button>
         )}
       </div>

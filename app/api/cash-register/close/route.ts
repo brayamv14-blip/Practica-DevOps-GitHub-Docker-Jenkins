@@ -14,7 +14,7 @@ import { dayEndISO, dayStartISO, isDateOnly, todayDateString } from "@/lib/utils
 // cierre sin ventas nuevas no modifica el corte ya registrado.
 export async function POST(req: NextRequest) {
   const device = await getDeviceFromCookies();
-  if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
   const forbidden = forbidUnlessAdmin(device);
   if (forbidden) return forbidden;
 

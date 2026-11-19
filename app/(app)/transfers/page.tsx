@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
+import { useIsAdmin } from "@/contexts/RoleContext";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 interface PendingTransfer {
@@ -19,6 +20,7 @@ interface PendingTransfer {
 }
 
 export default function TransfersPage() {
+  const isAdmin = useIsAdmin();
   const [items, setItems] = useState<PendingTransfer[]>([]);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
@@ -157,14 +159,16 @@ export default function TransfersPage() {
                 >
                   {confirming === item.id ? "Procesando…" : "Confirmar pago"}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={confirming === item.id}
-                  onClick={() => void reject(item)}
-                >
-                  Rechazar
-                </Button>
+                {isAdmin && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={confirming === item.id}
+                    onClick={() => void reject(item)}
+                  >
+                    Rechazar
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

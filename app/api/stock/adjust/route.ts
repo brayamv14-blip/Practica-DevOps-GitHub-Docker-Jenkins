@@ -10,7 +10,7 @@ import { notifyStockChanges } from "@/lib/push-events";
 export async function POST(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { product_id, variant_id, qty_change, note, client_op_id } = await req.json();
     if (!product_id || !variant_id || qty_change == null) {
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
         .eq("product_id", product_id)
         .maybeSingle();
       if (varErr) throw varErr;
-      if (!variant) return NextResponse.json({ error: "Variant not found" }, { status: 404 });
+      if (!variant) return NextResponse.json({ error: "Variante no encontrada." }, { status: 404 });
 
       const oldQty = Number(variant.stock_qty);
       const newQty = Math.max(0, oldQty + change);
@@ -98,6 +98,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "El inventario cambió mientras se ajustaba. Intenta de nuevo." }, { status: 409 });
   } catch (err) {
     console.error("[stock adjust]", err instanceof Error ? err.message : err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }

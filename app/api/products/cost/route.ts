@@ -7,7 +7,7 @@ import { audit } from "@/lib/audit";
 // GET /api/products/cost?variant_id=  |  PATCH { variant_id, cost }   (solo administrador: el costo es confidencial)
 export async function GET(req: NextRequest) {
   const device = await getDeviceFromCookies();
-  if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
   const forbidden = forbidUnlessAdmin(device);
   if (forbidden) return forbidden;
   const ids = (new URL(req.url).searchParams.get("variant_ids") ?? "").split(",").filter(Boolean).slice(0, 200);
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
     const forbidden = forbidUnlessAdmin(device);
     if (forbidden) return forbidden;
 

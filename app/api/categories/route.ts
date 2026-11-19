@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbError } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/server";
 import { getDeviceFromCookies } from "@/lib/auth";
 
@@ -7,17 +8,17 @@ export async function GET() {
     .from("categories")
     .select("*")
     .order("name");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError("categories", error, 500);
   return NextResponse.json(data);
 }
 
 export async function POST(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { name } = await req.json();
-    if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
+    if (!name?.trim()) return NextResponse.json({ error: "El nombre es obligatorio." }, { status: 400 });
 
     // Upsert (find or create)
     const { data: existing } = await supabase
@@ -34,9 +35,9 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbError("categories", error, 500);
     return NextResponse.json(data, { status: 201 });
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }

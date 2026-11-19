@@ -9,7 +9,7 @@ import type { ReactElement } from "react";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const device = await getDeviceFromCookies();
-  if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
   const { id } = await params;
 
@@ -22,7 +22,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     supabase.from("store_config").select("store_name").eq("id", 1).single(),
   ]);
 
-  if (!sale) return NextResponse.json({ error: "Sale not found" }, { status: 404 });
+  if (!sale) return NextResponse.json({ error: "Venta no encontrada." }, { status: 404 });
 
   const element = createElement(ReceiptDocument, {
     sale: sale as Parameters<typeof ReceiptDocument>[0]["sale"],

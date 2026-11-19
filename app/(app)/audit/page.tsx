@@ -44,6 +44,7 @@ const LABELS: Record<string, string> = {
   "variant.delete": "Eliminó una variante",
   "category.update": "Renombró una categoría",
   "category.delete": "Eliminó una categoría",
+  "store.update": "Cambió la configuración o el código de acceso de la tienda",
   "backup.export": "Descargó un respaldo",
   "export.report": "Exportó un reporte",
 };

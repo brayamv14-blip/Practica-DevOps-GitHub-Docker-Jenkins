@@ -10,9 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
 import { useIsAdmin } from "@/contexts/RoleContext";
 import { countPendingOps } from "@/lib/offline-ops";
+import { downloadPendingBackup } from "@/lib/local-export";
 import { getPendingSales } from "@/lib/offline-queue";
 import { openDb } from "@/lib/db";
 import { StoragePanel } from "@/components/settings/StoragePanel";
+import { PushToggleLazy } from "@/components/push/PushToggleLazy";
+import { PermissionsCard } from "@/components/settings/PermissionsCard";
+import { AccessCodeCard } from "@/components/settings/AccessCodeCard";
 import { formatDateTime } from "@/lib/utils";
 
 interface DeviceRow {
@@ -86,11 +90,20 @@ export default function SettingsPage() {
     let pending = 0;
     try { pending = (await countPendingOps()) + (await getPendingSales()).length; } catch { /* sin IndexedDB */ }
     const msg = pending > 0
-      ? `Hay ${pending} operación(es) sin sincronizar en este dispositivo. Si cierras sesión se BORRARÁN. Conéctate y espera a que se sincronicen antes de salir.\n\n¿Cerrar sesión y borrar de todos modos?`
+      ? `Hay ${pending} operación(es) sin sincronizar en este dispositivo. Lo recomendable es conectarte y esperar a que se sincronicen antes de salir.\n\nSi continúas, primero se descargará un archivo de respaldo con esas operaciones y después se borrarán de este dispositivo.\n\n¿Continuar?`
       : "¿Cerrar sesión en este dispositivo? Se borrarán los datos guardados localmente y habrá que registrarlo de nuevo con el código de acceso.";
     if (!window.confirm(msg)) return;
     setBusy("logout");
     try {
+      // Nunca se borra una operacion pendiente sin haberla respaldado antes: si el respaldo falla, no se cierra la sesion.
+      if (pending > 0) {
+        try {
+          await downloadPendingBackup();
+        } catch {
+          toast.error("No se pudo crear el respaldo de las operaciones pendientes; la sesión NO se cerró.");
+          return;
+        }
+      }
       const res = await apiFetch("/api/auth/logout", { method: "POST" });
       if (!res.ok) {
         toast.error((await res.json().catch(() => ({}))).error ?? "No se pudo cerrar la sesión.");
@@ -135,6 +148,10 @@ export default function SettingsPage() {
         )}
       </div>
 
+      <PushToggleLazy />
+
+      <PermissionsCard role={isAdmin ? "admin" : "employee"} />
+
       <StoragePanel />
 
       {isAdmin && (
@@ -170,6 +187,13 @@ export default function SettingsPage() {
                           role === "admin" ? `¿Quitar permisos de administrador a «${d.name}»?` : `¿Dar permisos de administrador a «${d.name}»? Podrá cambiar precios, cancelar y cerrar caja.`)}>
                         {role === "admin" ? "Hacer empleado" : "Hacer admin"}
                       </Button>
+                      <Button size="sm" variant="ghost" disabled={busy === d.id}
+                        onClick={() => {
+                          const n = window.prompt("Nuevo nombre del dispositivo:", d.name);
+                          if (n && n.trim() && n.trim() !== d.name) void patchDevice(d.id, { name: n.trim() });
+                        }}>
+                        Renombrar
+                      </Button>
                       <Button size="sm" variant={d.is_active ? "destructive" : "outline"} disabled={busy === d.id || isMe}
                         onClick={() => patchDevice(d.id, { is_active: !d.is_active },
                           d.is_active ? `¿Desactivar «${d.name}»? Perderá el acceso de inmediato.` : undefined)}>
@@ -182,6 +206,8 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground">Los dispositivos nuevos entran como empleado. Siempre debe quedar al menos un administrador.</p>
             </CardContent>
           </Card>
+
+          <AccessCodeCard />
 
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm">Respaldo</CardTitle></CardHeader>

@@ -24,6 +24,7 @@ export type AuditAction =
   | "variant.delete"
   | "category.update"
   | "category.delete"
+  | "store.update"
   | "backup.export"
   | "export.report";
 

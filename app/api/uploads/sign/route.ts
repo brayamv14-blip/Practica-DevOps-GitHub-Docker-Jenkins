@@ -5,7 +5,7 @@ import { CLOUDINARY_FOLDER, getCloudinaryConfig, signUploadParams } from "@/lib/
 // POST /api/uploads/sign  firma una subida directa a Cloudinary (el secreto nunca sale del servidor)
 export async function POST() {
   const device = await getDeviceFromCookies();
-  if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
   const config = getCloudinaryConfig();
   if (!config) {

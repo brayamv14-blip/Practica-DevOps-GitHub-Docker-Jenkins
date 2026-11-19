@@ -6,6 +6,15 @@ import { Bell, BellOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
+import {
+  detectPlatform,
+  explainUnsupported,
+  hostOfEndpoint,
+  iosTooOld,
+  pushServiceName,
+  withTimeout,
+  type PushPlatform,
+} from "@/lib/push-client";
 
 const PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
@@ -20,7 +29,14 @@ const PREF_LABELS: Record<keyof Prefs, string> = {
 };
 
 interface Diagnostics {
-  vapid: { configured: boolean; keysMatch: boolean | null };
+  vapid: {
+    configured: boolean;
+    keysMatch: boolean | null;
+    publicKeyValid?: boolean | null;
+    privateKeyValid?: boolean | null;
+    subjectValid?: boolean;
+  };
+  endpointHost?: string | null;
   subscriptions: { total: number; thisDevice: number };
   registered: boolean;
   prefs: Prefs | null;
@@ -32,7 +48,26 @@ interface TestReport {
   accepted: number;
   expired: number;
   failed: number;
-  errors: { host: string; status: number | null; message: string }[];
+  errors: { host: string; status: number | null; message: string; hint?: string }[];
+  scheduled?: boolean;
+  delaySeconds?: number;
+}
+
+/** Espera al Service Worker, pero no se queda colgado si no esta activo. */
+function readyWithTimeout(): Promise<ServiceWorkerRegistration> {
+  return withTimeout(
+    navigator.serviceWorker.ready,
+    8000,
+    "El Service Worker no está activo. Recarga la aplicación (en desarrollo no hay Service Worker)."
+  );
+}
+
+interface LocalChecks {
+  permission: NotificationPermission;
+  serviceWorker: boolean;
+  subscription: boolean;
+  endpointHost: string | null;
+  keyMatches: boolean | null;
 }
 
 function urlBase64ToUint8Array(base64: string): Uint8Array {
@@ -66,6 +101,8 @@ export function PushToggle() {
   const [diag, setDiag] = useState<Diagnostics | null>(null);
   const [report, setReport] = useState<TestReport | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [platform, setPlatform] = useState<PushPlatform | null>(null);
+  const [local, setLocal] = useState<LocalChecks | null>(null);
 
   const loadDiagnostics = useCallback(async (endpoint?: string) => {
     try {
@@ -81,6 +118,10 @@ export function PushToggle() {
 
   useEffect(() => {
     void (async () => {
+      const standalone =
+        window.matchMedia?.("(display-mode: standalone)").matches ||
+        (navigator as unknown as { standalone?: boolean }).standalone === true;
+      setPlatform(detectPlatform(navigator.userAgent, standalone, navigator.platform, navigator.maxTouchPoints));
       const ok =
         "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
       if (!ok) {
@@ -91,7 +132,7 @@ export function PushToggle() {
       setSupported(true);
 
       try {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await readyWithTimeout();
         let subscription = await registration.pushManager.getSubscription();
 
         // Si la suscripcion se creo con otra clave VAPID, nunca recibira avisos: se renueva.
@@ -100,6 +141,13 @@ export function PushToggle() {
           subscription = null;
         }
         setSubscribed(subscription !== null);
+        setLocal({
+          permission: Notification.permission,
+          serviceWorker: true,
+          subscription: subscription !== null,
+          endpointHost: subscription ? hostOfEndpoint(subscription.endpoint) : null,
+          keyMatches: subscription && PUBLIC_KEY ? sameKey(subscription, PUBLIC_KEY) : null,
+        });
 
         if (subscription && navigator.onLine) {
           await loadDiagnostics(subscription.endpoint);
@@ -108,6 +156,7 @@ export function PushToggle() {
         }
       } catch {
         // sin Service Worker activo (modo desarrollo)
+        setLocal({ permission: Notification.permission, serviceWorker: false, subscription: false, endpointHost: null, keyMatches: null });
       }
     })();
   }, [loadDiagnostics]);
@@ -139,7 +188,7 @@ export function PushToggle() {
         return;
       }
 
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await readyWithTimeout();
       const existing = await registration.pushManager.getSubscription();
       if (existing && !sameKey(existing, PUBLIC_KEY)) await existing.unsubscribe();
 
@@ -156,6 +205,44 @@ export function PushToggle() {
     } catch (error) {
       console.error("[push] activación:", error);
       toast.error("No se pudieron activar las notificaciones. Revisa tu conexión e inténtalo de nuevo.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Crea una suscripcion nueva (misma llave VAPID) y la registra; no cambia las llaves ni borra datos del servidor. */
+  async function repair() {
+    if (!PUBLIC_KEY) return;
+    setBusy(true);
+    try {
+      if (Notification.permission !== "granted") {
+        toast.error("Primero concede el permiso de notificaciones en los ajustes del dispositivo.");
+        return;
+      }
+      const registration = await readyWithTimeout();
+      const existing = await registration.pushManager.getSubscription();
+      if (existing) {
+        await apiFetch("/api/push/subscribe", { method: "DELETE", body: JSON.stringify({ endpoint: existing.endpoint }) }).catch(() => null);
+        await existing.unsubscribe();
+      }
+      const fresh = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(PUBLIC_KEY) as BufferSource,
+      });
+      if (!(await saveSubscription(fresh))) throw new Error("No se pudo guardar la suscripción");
+      setSubscribed(true);
+      setLocal({
+        permission: Notification.permission,
+        serviceWorker: true,
+        subscription: true,
+        endpointHost: hostOfEndpoint(fresh.endpoint),
+        keyMatches: sameKey(fresh, PUBLIC_KEY),
+      });
+      await loadDiagnostics(fresh.endpoint);
+      toast.success("Suscripción renovada. Usa «Probar».");
+    } catch (error) {
+      console.error("[push] reparar:", error);
+      toast.error("No se pudo reparar la suscripción. Conéctate e inténtalo de nuevo.");
     } finally {
       setBusy(false);
     }
@@ -205,14 +292,18 @@ export function PushToggle() {
     }
   }
 
-  async function sendTest() {
+  async function sendTest(delaySeconds = 0) {
     setBusy(true);
     setReport(null);
     try {
-      const res = await apiFetch("/api/push/test", { method: "POST", body: JSON.stringify({ scope: "device" }) });
+      const res = await apiFetch("/api/push/test", { method: "POST", body: JSON.stringify({ scope: "device", delaySeconds }) });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(json.error ?? "No se pudo enviar la prueba.");
+        return;
+      }
+      if (json.scheduled) {
+        toast.success(`Cierra la app ahora: la notificación llegará en ${json.delaySeconds} s.`);
         return;
       }
       setReport(json as TestReport);
@@ -224,7 +315,7 @@ export function PushToggle() {
       } else {
         toast.error("El servicio push no aceptó la prueba. Revisa el detalle.");
       }
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await readyWithTimeout();
       const subscription = await registration.pushManager.getSubscription();
       await loadDiagnostics(subscription?.endpoint);
     } catch {
@@ -238,8 +329,7 @@ export function PushToggle() {
 
   let message = "Avisos de inventario bajo, agotados y transferencias por confirmar.";
   if (!supported) {
-    message =
-      "Este navegador no admite notificaciones. En iPhone/iPad instala la app en la pantalla de inicio (iOS 16.4 o superior).";
+    message = platform ? explainUnsupported(platform) : "Este navegador no admite notificaciones.";
   } else if (!PUBLIC_KEY) {
     message = "Faltan las llaves VAPID en el servidor para activar las notificaciones.";
   } else if (permission === "denied") {
@@ -247,6 +337,8 @@ export function PushToggle() {
   } else if (diag?.vapid.keysMatch === false) {
     message =
       "La llave pública y la privada VAPID no coinciden: las notificaciones no llegarán hasta corregirlo en el servidor.";
+  } else if (platform && iosTooOld(platform)) {
+    message = "Tu iOS es anterior a la 16.4: actualiza para recibir notificaciones.";
   }
 
   const canUse = supported && !!PUBLIC_KEY && permission !== "denied";
@@ -292,6 +384,23 @@ export function PushToggle() {
             {showDetails && (
               <div className="space-y-2 text-xs">
                 <ul className="space-y-0.5 text-muted-foreground">
+                  {platform && (
+                    <li>
+                      Dispositivo: {platform.os === "ios" ? "iPhone/iPad" : platform.os === "android" ? "Android" : "Computadora"} ·{" "}
+                      {platform.standalone ? "app instalada ✓" : "abierta en el navegador"}
+                    </li>
+                  )}
+                  {local && <li>Permiso del navegador: {local.permission === "granted" ? "concedido ✓" : local.permission === "denied" ? "bloqueado ✗" : "sin responder"}</li>}
+                  {local && <li>Service Worker: {local.serviceWorker ? "activo ✓" : "no activo ✗"}</li>}
+                  {local?.endpointHost && (
+                    <li>Servicio push: {pushServiceName(local.endpointHost)}{local.keyMatches === false ? " · llave distinta ✗" : " ✓"}</li>
+                  )}
+                  {diag.vapid.subjectValid === false && (
+                    <li className="text-red-600">VAPID_SUBJECT no es válido (usa mailto:correo@dominio-real o https://tu-sitio): Apple lo rechaza.</li>
+                  )}
+                  {(diag.vapid.publicKeyValid === false || diag.vapid.privateKeyValid === false) && (
+                    <li className="text-red-600">El formato de las llaves VAPID no es válido.</li>
+                  )}
                   <li>Llaves VAPID: {diag.vapid.configured ? (diag.vapid.keysMatch === false ? "no coinciden ✗" : "configuradas ✓") : "faltan ✗"}</li>
                   <li>Suscripción de este dispositivo: {diag.registered ? "registrada ✓" : "sin registrar ✗"}</li>
                   <li>Dispositivos suscritos: {diag.subscriptions.total}</li>
@@ -318,6 +427,15 @@ export function PushToggle() {
                   </div>
                 )}
 
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void sendTest(15)}>
+                    Probar con la app cerrada (15 s)
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void repair()}>
+                    Reparar suscripción
+                  </Button>
+                </div>
+
                 {report && (
                   <div className="rounded-md border p-2 space-y-0.5">
                     <p>
@@ -326,7 +444,7 @@ export function PushToggle() {
                     </p>
                     {report.errors.map((e, i) => (
                       <p key={i} className="text-red-600">
-                        {e.host}: {e.message}
+                        {e.host}: {e.message}{e.hint ? ` — ${e.hint}` : ""}
                       </p>
                     ))}
                     <p className="text-muted-foreground">
