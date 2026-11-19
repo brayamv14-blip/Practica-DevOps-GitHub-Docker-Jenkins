@@ -6,6 +6,7 @@
 import { flushQueue, getFailedItems } from "../lib/offline-queue";
 import { openDb } from "../lib/db";
 import { SYNC_TAG, SYNC_DONE_MESSAGE } from "../lib/background-sync";
+import { normalizePushData } from "../lib/push-payload";
 
 interface ExtendableEventLike extends Event {
   waitUntil(promise: Promise<unknown>): void;
@@ -118,36 +119,41 @@ sw.addEventListener("sync", (event) => {
 });
 
 // ---------- Notificaciones push ----------
-interface PushData {
-  title: string;
-  body: string;
-  url: string;
-  tag?: string;
-}
+
+const FALLBACK_ICON = "/icons/icon-192.png";
 
 sw.addEventListener("push", (event) => {
-  const data: PushData = { title: "PuntoBase", body: "", url: "/dashboard" };
-
+  let data = normalizePushData(null);
   try {
-    Object.assign(data, event.data?.json() ?? {});
+    data = normalizePushData(event.data?.json());
   } catch {
-    data.body = event.data?.text() ?? "";
+    try {
+      data.body = (event.data?.text() ?? "").slice(0, 300);
+    } catch {
+      // se muestra el aviso generico
+    }
   }
 
   event.waitUntil(
-    sw.registration.showNotification(data.title, {
-      body: data.body,
-      icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
-      tag: data.tag,
-      data: { url: data.url },
-    })
+    sw.registration
+      .showNotification(data.title, {
+        body: data.body,
+        icon: FALLBACK_ICON,
+        badge: FALLBACK_ICON,
+        tag: data.tag,
+        data: { url: data.url },
+      })
+      .catch(() =>
+        // Ultimo recurso: sin opciones, para no dejar un push sin notificacion visible.
+        sw.registration.showNotification("PuntoBase", { body: data.body || "Tienes un aviso nuevo." })
+      )
   );
 });
 
 sw.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const path = event.notification.data?.url ?? "/dashboard";
+  const rawPath = event.notification.data?.url;
+  const path = typeof rawPath === "string" && rawPath.startsWith("/") && !rawPath.startsWith("//") ? rawPath : "/dashboard";
   const target = new URL(path, sw.location.origin).href;
 
   event.waitUntil(
@@ -156,11 +162,51 @@ sw.addEventListener("notificationclick", (event) => {
       const open = windows.find((client) => client.url.startsWith(sw.location.origin));
 
       if (open) {
-        await open.focus();
-        if (open.navigate) await open.navigate(target);
-        return;
+        try {
+          await open.focus();
+          if (open.navigate) await open.navigate(target);
+          return;
+        } catch {
+          // navigate/focus pueden fallar (p. ej. iOS): se abre una ventana nueva
+        }
       }
       await sw.clients.openWindow(target);
     })()
   );
 });
+
+// ---------- Renovacion de la suscripcion ----------
+// Si el navegador/Apple invalida la suscripcion, se crea otra con la misma llave y se registra de nuevo.
+interface SubscriptionChangeEventLike extends ExtendableEventLike {
+  oldSubscription?: { options?: { applicationServerKey?: ArrayBuffer | null } } | null;
+}
+type PushSubscribeScope = {
+  registration: {
+    pushManager: {
+      subscribe(options: { userVisibleOnly: boolean; applicationServerKey: ArrayBuffer }): Promise<{ toJSON(): unknown }>;
+    };
+  };
+};
+
+(sw as unknown as { addEventListener(type: "pushsubscriptionchange", l: (e: SubscriptionChangeEventLike) => void): void })
+  .addEventListener("pushsubscriptionchange", (event) => {
+    event.waitUntil(
+      (async () => {
+        try {
+          const key = event.oldSubscription?.options?.applicationServerKey;
+          if (!key) return; // sin la llave anterior se renovara al abrir la app (PushToggle)
+          const fresh = await (sw as unknown as PushSubscribeScope).registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: key,
+          });
+          await fetch("/api/push/subscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(fresh.toJSON()),
+          });
+        } catch (error) {
+          console.error("[sw] No se pudo renovar la suscripción push:", error);
+        }
+      })()
+    );
+  });

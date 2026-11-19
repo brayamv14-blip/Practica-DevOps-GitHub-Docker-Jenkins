@@ -2,13 +2,14 @@ import { audit } from "@/lib/audit";
 import { after, NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase/server";
 import { getDeviceFromCookies } from "@/lib/auth";
+import { forbidUnlessAdmin } from "@/lib/guard";
 import { notifyStockChanges, notifyTransferResolved, type VariantChange } from "@/lib/push-events";
 
 // GET /api/transfers  bandeja de verificacion: transferencias pendientes de confirmar
 export async function GET() {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { data, error } = await supabase
       .from("sales")
@@ -24,7 +25,7 @@ export async function GET() {
     }
     return NextResponse.json({ data: data ?? [] });
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }
 
@@ -35,7 +36,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const body = await req.json();
     const { id } = body ?? {};
@@ -68,7 +69,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ id: data.id, payment_status: "paid" });
     }
 
-    // ── Rechazo ───────────────────────────────────────────────────────────────
+    // ── Rechazo (solo administrador) ──────────────────────────────────────────
+    const forbidden = forbidUnlessAdmin(device);
+    if (forbidden) return forbidden;
     const reason =
       typeof body?.reason === "string" && body.reason.trim() ? body.reason.trim().slice(0, 300) : null;
 
@@ -111,7 +114,7 @@ export async function POST(req: NextRequest) {
       );
     }
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }
 

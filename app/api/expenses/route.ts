@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbError } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/server";
 import { getDeviceFromCookies } from "@/lib/auth";
 import { ensureOpenCashRegister } from "@/lib/cash-register";
 
 export async function GET(req: NextRequest) {
   const device = await getDeviceFromCookies();
-  if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const from = searchParams.get("from");
@@ -23,17 +24,17 @@ export async function GET(req: NextRequest) {
   if (to) query = query.lte("created_at", to);
 
   const { data, error, count } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError("expenses", error, 500);
   return NextResponse.json({ data, count });
 }
 
 export async function POST(req: NextRequest) {
   const device = await getDeviceFromCookies();
-  if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
   const { description, amount } = await req.json();
-  if (!description?.trim()) return NextResponse.json({ error: "description required" }, { status: 400 });
-  if (amount == null || amount <= 0) return NextResponse.json({ error: "valid amount required" }, { status: 400 });
+  if (!description?.trim()) return NextResponse.json({ error: "La descripción es obligatoria." }, { status: 400 });
+  if (amount == null || amount <= 0) return NextResponse.json({ error: "Escribe un monto válido." }, { status: 400 });
 
   const { data, error } = await supabase
     .from("expenses")
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
     .select("*, device:devices(id,name)")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError("expenses", error, 500);
 
   await ensureOpenCashRegister();
 

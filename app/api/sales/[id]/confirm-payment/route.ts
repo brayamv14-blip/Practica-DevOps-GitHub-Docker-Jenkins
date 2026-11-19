@@ -9,7 +9,7 @@ import { notifyTransferResolved } from "@/lib/push-events";
 // dispositivos y queda en la bitacora.
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const device = await getDeviceFromCookies();
-  if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
   const { id } = await params;
   const { data, error } = await supabase

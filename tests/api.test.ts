@@ -425,7 +425,12 @@ describe("Notificaciones push", () => {
     const { sendPush } = await import("@/lib/push");
     const result = await sendPush({ title: "t", body: "b" }, { category: "stock" });
     expect(result).toMatchObject({ attempted: 3, accepted: 1, expired: 1, failed: 1 });
-    expect(result.errors[0]).toEqual({ host: "bad.example.com", status: 500, message: "El servicio push respondió HTTP 500" });
+    expect(result.errors[0]).toEqual({
+      host: "bad.example.com",
+      status: 500,
+      message: "El servicio push respondió HTTP 500",
+      hint: "Falla temporal del servicio push: se reintentará con el siguiente evento.",
+    });
     expect(JSON.stringify(result)).not.toContain("secret-token");
     expect(h.db.rows("push_subscriptions").some((r) => r.id === "gone")).toBe(false);
     const bad = h.db.rows("push_subscriptions").find((r) => r.id === "bad")!;

@@ -24,7 +24,7 @@ export async function proxy(request: NextRequest) {
   if (!requiresAdmin(method, pathname)) return NextResponse.next();
 
   const token = request.cookies.get(COOKIE_NAME)?.value;
-  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!token) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
   try {
     const { data, error } = await supabase
@@ -36,7 +36,7 @@ export async function proxy(request: NextRequest) {
 
     // Un fallo de la base no es "sin sesion": responder 503 evita cerrar la sesion de alguien valido.
     if (error) throw new Error(error.message);
-    if (!data) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!data) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
     if (normalizeRole(data.role) !== "admin") {
       return NextResponse.json(
         { error: "Esta acción requiere permisos de administrador." },

@@ -33,3 +33,34 @@ describe("Almacenamiento local: estadisticas y respaldo de pendientes", () => {
     expect(await db.pending_sales.count()).toBe(before);
   });
 });
+
+describe("Respaldo automatico antes de borrar datos locales (cerrar sesion)", () => {
+  it("descarga un JSON con las ventas pendientes y no borra nada", async () => {
+    const created: Blob[] = [];
+    const clicks: string[] = [];
+    const anchor = { href: "", download: "", click() { clicks.push(this.download); }, remove() {} };
+    (globalThis as unknown as { document: unknown }).document = { createElement: () => anchor, body: { appendChild() {} } };
+    (URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL = (b) => { created.push(b); return "blob:x"; };
+    (URL as unknown as { revokeObjectURL: () => void }).revokeObjectURL = () => {};
+
+    const { downloadPendingBackup } = await import("@/lib/local-export");
+    const db = await openDb();
+    const before = await db.pending_sales.count();
+    expect(before).toBeGreaterThan(0); // la prueba anterior dejo una venta pendiente
+
+    const total = await downloadPendingBackup(new Date("2026-11-12T12:00:00Z"));
+    expect(total).toBeGreaterThanOrEqual(1);
+    expect(clicks[0]).toBe("puntobase-pendientes-2026-11-12.json");
+    const parsed = JSON.parse(await created[0].text());
+    expect(parsed.kind).toBe("pendientes-sin-sincronizar");
+    expect(parsed.pendingSales.length).toBe(before);
+    expect(await db.pending_sales.count()).toBe(before);
+
+    // Sin nada pendiente no se descarga ningun archivo.
+    await db.pending_sales.clear();
+    await db.pending_ops.clear();
+    clicks.length = 0;
+    expect(await downloadPendingBackup()).toBe(0);
+    expect(clicks).toHaveLength(0);
+  });
+});

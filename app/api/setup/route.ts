@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       name.length > 80 ||
       access_code.length > 200
     ) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      return NextResponse.json({ error: "Faltan datos: escribe tu nombre y el código de acceso." }, { status: 400 });
     }
 
     // Check store config
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       // Subsequent registration: verify access code
       const valid = await bcrypt.compare(access_code, config!.access_code);
       if (!valid) {
-        return NextResponse.json({ error: "Invalid access code" }, { status: 401 });
+        return NextResponse.json({ error: "Código de acceso incorrecto." }, { status: 401 });
       }
     }
 
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (deviceErr || !device) {
-      return NextResponse.json({ error: "Failed to register device" }, { status: 500 });
+      return NextResponse.json({ error: "No se pudo registrar el dispositivo." }, { status: 500 });
     }
 
     await audit({ id: device.id, name: device.name, role }, "device.register", "device", device.id, { role });
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
     return response;
   } catch (err) {
     console.error("[setup]", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }
 

@@ -13,7 +13,7 @@ import { dayEndISO, dayStartISO, todayDateString } from "@/lib/utils";
 export async function GET(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const view = new URL(req.url).searchParams.get("view") ?? "active";
     const today = todayDateString();
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json({ data: (data ?? []).map((r: unknown) => decorate(r as Row, today)) });
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }
 
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
   let layawayFolio = "";
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const customerName = typeof body.customer_name === "string" ? body.customer_name.trim() : "";

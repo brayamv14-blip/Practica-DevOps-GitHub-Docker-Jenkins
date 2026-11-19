@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbError } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/server";
 import { getDeviceFromCookies } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   const device = await getDeviceFromCookies();
-  if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const categoryId = searchParams.get("category_id");
@@ -18,19 +19,19 @@ export async function GET(req: NextRequest) {
   if (categoryId) query = query.eq("category_id", categoryId);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError("products", error, 500);
   return NextResponse.json(data);
 }
 
 export async function POST(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const body = await req.json();
     const { name, category_id, track_stock, price, stock_qty, low_stock_threshold, barcode, client_id } = body;
 
-    if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
+    if (!name?.trim()) return NextResponse.json({ error: "El nombre es obligatorio." }, { status: 400 });
 
     // Altas hechas sin conexion: si ya llegaron (reintento) o si otro dispositivo
     // dio de alta el mismo codigo de barras, se devuelve el producto existente en vez de duplicarlo.
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
       if (error.code === "23505") {
         return NextResponse.json({ error: "Ya existe un producto con ese código de barras." }, { status: 409 });
       }
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return dbError("products", error, 500);
     }
 
     // Auto-create default variant (every product has at least 1 variant)
@@ -96,6 +97,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(full, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }

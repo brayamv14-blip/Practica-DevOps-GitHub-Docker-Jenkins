@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Database, Download, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { clearBrowserCaches, exportPendingData, getLocalStats, type LocalStorageStats } from "@/lib/local-export";
+import { clearBrowserCaches, downloadPendingBackup, getLocalStats, type LocalStorageStats } from "@/lib/local-export";
 import { flushQueue, getFailedItems } from "@/lib/offline-queue";
 import type { FailedOp } from "@/lib/offline-ops";
 
@@ -54,15 +54,8 @@ export function StoragePanel() {
   }
 
   async function exportPending() {
-    const data = await exportPendingData();
-    if (data.counts.pendingSales + data.counts.pendingOps === 0) return toast.info("No hay nada pendiente por respaldar.");
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `puntobase-pendientes-${data.exportedAt.slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const total = await downloadPendingBackup();
+    if (total === 0) toast.info("No hay nada pendiente por respaldar.");
   }
 
   async function clearCaches() {

@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useCart } from "@/hooks/useCart";
 import { useIsAdmin } from "@/contexts/RoleContext";
@@ -44,10 +45,19 @@ export function BottomNav() {
   const cartCount = cart.items.length;
   const isAdmin = useIsAdmin();
   const items = NAV_ITEMS.filter((i) => !i.adminOnly || isAdmin);
+  const scroller = useRef<HTMLDivElement>(null);
+
+  // En pantallas angostas la barra se desplaza: se deja visible (centrada) la seccion activa.
+  useEffect(() => {
+    const box = scroller.current;
+    const active = box?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!box || !active) return;
+    box.scrollLeft = active.offsetLeft - (box.clientWidth - active.offsetWidth) / 2;
+  }, [pathname]);
 
   return (
     <nav aria-label="Navegación principal" className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border safe-area-inset-bottom">
-      <div className="flex overflow-x-auto scrollbar-hide px-1 py-1">
+      <div ref={scroller} className="flex overflow-x-auto scrollbar-hide px-1 py-1">
         {items.map((item) => {
           const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
           const Icon = item.icon;
@@ -58,7 +68,7 @@ export function BottomNav() {
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex flex-col items-center justify-center flex-1 min-w-[50px] py-1.5 px-1 text-xs gap-0.5 rounded-xl transition-colors",
+                "flex flex-col items-center justify-center flex-1 shrink-0 min-w-[76px] py-1.5 px-1.5 text-[11px] gap-0.5 rounded-xl transition-colors",
                 active
                   ? "bg-primary text-primary-foreground font-semibold"
                   : "text-muted-foreground hover:text-foreground"
@@ -72,7 +82,7 @@ export function BottomNav() {
                   </span>
                 )}
               </div>
-              <span className="leading-none">{item.label}</span>
+              <span className="leading-tight text-center whitespace-nowrap">{item.label}</span>
             </Link>
           );
         })}

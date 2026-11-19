@@ -8,7 +8,7 @@ import { normalizeRole } from "@/lib/permissions";
 export async function GET() {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     let { data, error } = await supabase
       .from("devices")
@@ -29,7 +29,7 @@ export async function GET() {
     }
     return NextResponse.json(data);
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }
 
@@ -37,7 +37,7 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
     const forbidden = forbidUnlessAdmin(device);
     if (forbidden) return forbidden;
 

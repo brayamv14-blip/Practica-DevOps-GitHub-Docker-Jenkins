@@ -1,14 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getDeviceFromCookies } from "@/lib/auth";
 import { claimEvent, getVapidStatus, sendPush } from "@/lib/push";
 import { rateLimit } from "@/lib/rate-limit";
 
-// POST /api/push/test  { scope?: "device" | "all" }
+export const maxDuration = 30;
+
+// POST /api/push/test  { scope?: "device" | "all", delaySeconds?: 0..20 }
+// delaySeconds permite probar con la app cerrada: se responde de inmediato y el envio ocurre despues.
 // Envia una notificacion de prueba. Por defecto SOLO al dispositivo que la solicita.
 // Requiere dispositivo registrado y esta limitada (1 prueba cada 20 s por dispositivo).
 export async function POST(req: NextRequest) {
   const device = await getDeviceFromCookies();
-  if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
   const vapid = getVapidStatus();
   if (!vapid.configured) {
@@ -45,15 +48,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Espera unos segundos antes de otra prueba." }, { status: 429 });
   }
 
-  const result = await sendPush(
-    {
-      title: "PuntoBase",
-      body: "Las notificaciones están activas ✓",
-      url: "/dashboard",
-      tag: "test",
-    },
-    { category: "system", onlyDeviceId: scope === "device" ? device.id : undefined }
-  );
+  const rawDelay = Number(body?.delaySeconds);
+  const delaySeconds = Number.isFinite(rawDelay) ? Math.min(20, Math.max(0, Math.round(rawDelay))) : 0;
+  const payload = {
+    title: "PuntoBase",
+    body: delaySeconds > 0 ? "Prueba con la app cerrada: ¡llegó! ✓" : "Las notificaciones están activas ✓",
+    url: "/dashboard",
+    tag: "test",
+  };
+  const options = { category: "system" as const, onlyDeviceId: scope === "device" ? device.id : undefined };
+
+  if (delaySeconds > 0) {
+    after(async () => {
+      await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+      const delayed = await sendPush(payload, options);
+      console.log(`[push test] envío diferido: ${delayed.accepted}/${delayed.attempted} aceptadas.`);
+    });
+    return NextResponse.json({
+      vapid,
+      scope,
+      scheduled: true,
+      delaySeconds,
+      note: `Cierra la app: la notificación se enviará en ${delaySeconds} s.`,
+    });
+  }
+
+  const result = await sendPush(payload, options);
 
   return NextResponse.json({
     vapid,

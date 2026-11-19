@@ -40,6 +40,26 @@ export async function exportPendingData(now: Date = new Date()) {
 }
 
 /**
+ * Descarga un archivo JSON con las ventas y operaciones pendientes de este dispositivo.
+ * Devuelve cuantas operaciones respaldo (0 = no habia nada y no se descarga nada).
+ */
+export async function downloadPendingBackup(now: Date = new Date()): Promise<number> {
+  const data = await exportPendingData(now);
+  const total = data.counts.pendingSales + data.counts.pendingOps;
+  if (total === 0) return 0;
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `puntobase-pendientes-${data.exportedAt.slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return total;
+}
+
+/**
  * Borra SOLO las cachés del navegador (pantallas, fotos). Nunca toca IndexedDB:
  * las ventas pendientes y el catalogo local se conservan.
  */

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbError } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/server";
 import { getDeviceFromCookies } from "@/lib/auth";
 import { audit } from "@/lib/audit";
@@ -7,7 +8,7 @@ import { validName, validPrice, validStock } from "@/lib/catalog-validation";
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { id: product_id } = await params;
     const { size_label, price, stock_qty, low_stock_threshold } = await req.json();
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbError("products/[id]/variants", error, 500);
 
     // Quita la variante por defecto (size_label = '') DESPUES de crear la nueva: si el alta falla,
     // el producto no se queda sin variantes.
@@ -45,6 +46,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await audit(device, "variant.update", "product_variant", data.id, { created: true, size_label: data.size_label, price: data.price });
     return NextResponse.json(data, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }

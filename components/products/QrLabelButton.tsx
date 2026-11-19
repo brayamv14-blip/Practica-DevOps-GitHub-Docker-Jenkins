@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
 import { QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -32,11 +31,13 @@ export function QrLabelButton({ code, name, onGenerate }: QrLabelButtonProps) {
   useEffect(() => {
     if (!open || !code) return;
     let cancelled = false;
-    void QRCode.toDataURL(code, { margin: 1, width: 320, errorCorrectionLevel: "M" }).then(
-      (url) => {
+    // La libreria se descarga solo al abrir la etiqueta (ahorra peso en la carga inicial).
+    void import("qrcode")
+      .then((m) => m.default.toDataURL(code, { margin: 1, width: 320, errorCorrectionLevel: "M" }))
+      .then((url) => {
         if (!cancelled) setDataUrl(url);
-      }
-    );
+      })
+      .catch((err) => console.error("[qr] No se pudo generar el código:", err));
     return () => {
       cancelled = true;
     };

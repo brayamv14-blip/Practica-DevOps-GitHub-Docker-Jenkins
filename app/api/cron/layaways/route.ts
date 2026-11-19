@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "CRON_SECRET no está configurado (mínimo 16 caracteres)." }, { status: 503 });
   }
   if (!validSecret(request.headers.get("authorization"), secret)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
   }
   try {
     const result = await notifyLayawaysDue();

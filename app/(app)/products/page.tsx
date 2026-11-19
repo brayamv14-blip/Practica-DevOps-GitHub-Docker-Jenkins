@@ -36,9 +36,11 @@ import {
   getCachedCategories,
 } from "@/lib/catalog-cache";
 import { Pencil, Trash2, Check, X } from "lucide-react";
+import { useIsAdmin } from "@/contexts/RoleContext";
 
 export default function ProductsPage() {
   const cart = useCart();
+  const isAdmin = useIsAdmin();
 
   const [products, setProducts] = useState<ProductWithVariants[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -276,10 +278,11 @@ export default function ProductsPage() {
 
     return (
       <span
-        className={`inline-flex items-center justify-end gap-1 text-xs font-medium ${st.text}`}
+        className={`inline-flex items-center justify-end gap-1 text-xs font-medium whitespace-nowrap ${st.text}`}
         title={st.label}
       >
-        <span className={`h-2 w-2 rounded-full ${st.dot}`} />
+        <span className={`h-2 w-2 rounded-full ${st.dot}`} aria-hidden />
+        <span className="sr-only">{st.label}: </span>
         {stock} pzas.
       </span>
     );
@@ -789,6 +792,7 @@ export default function ProductsPage() {
                   <>
                     <span className="flex-1 text-sm">{c.name}</span>
 
+                    {isAdmin && (<>
                     <Button
                       size="icon"
                       variant="ghost"
@@ -811,6 +815,7 @@ export default function ProductsPage() {
                     >
                       <Trash2 size={14} />
                     </Button>
+                    </>)}
                   </>
                 )}
               </div>

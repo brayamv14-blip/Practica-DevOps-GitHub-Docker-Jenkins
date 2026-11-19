@@ -68,3 +68,30 @@ test("Ajustes muestra el panel de almacenamiento y sincronizacion del dispositiv
   await expect(page.getByRole("button", { name: /Descargar pendientes/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Sincronizar ahora/ })).toBeVisible();
 });
+
+test("la pantalla de registro de dispositivo esta en espanol y explica el rol", async ({ page }) => {
+  await page.goto("/setup");
+  await expect(page.getByRole("heading", { name: "PuntoBase" })).toBeVisible();
+  await expect(page.getByText(/Registrar este dispositivo|Configuración inicial de la tienda/)).toBeVisible();
+  await expect(page.getByLabel("Tu nombre")).toBeVisible();
+  await expect(page.getByRole("note")).toContainText(/administrador|empleado/);
+  await expect(page.getByText("Register this device")).toHaveCount(0);
+  await expect(page.getByText("Enter store access code")).toHaveCount(0);
+});
+
+test("Ajustes (administrador) muestra la matriz de permisos y el codigo de acceso", async ({ page, context }) => {
+  await login(context);
+  await page.goto("/settings");
+  await expect(page.getByText("Qué puede hacer cada rol")).toBeVisible();
+  await expect(page.getByText("Rechazar transferencia")).toBeVisible();
+  await expect(page.getByText("Código de acceso de la tienda")).toBeVisible();
+  await expect(page.getByText("Dispositivos y roles")).toBeVisible();
+});
+
+test("Ajustes muestra el panel de notificaciones push con su diagnostico", async ({ page, context }) => {
+  await login(context);
+  await page.goto("/settings");
+  await expect(page.getByText("Notificaciones push")).toBeVisible();
+  // Sin llaves VAPID en el entorno de pruebas debe explicarlo, no quedarse en blanco.
+await expect(page.getByText(/Faltan las llaves VAPID|Avisos de inventario bajo|no admite notificaciones|notificaciones.*bloqueadas/)).toBeVisible();
+});

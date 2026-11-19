@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbError } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/server";
 import { getDeviceFromCookies } from "@/lib/auth";
 import { audit } from "@/lib/audit";
@@ -6,11 +7,11 @@ import { audit } from "@/lib/audit";
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { id } = await params;
     const { name } = await req.json();
-    if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
+    if (!name?.trim()) return NextResponse.json({ error: "El nombre es obligatorio." }, { status: 400 });
 
     const { data, error } = await supabase
       .from("categories")
@@ -19,18 +20,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbError("categories/[id]", error, 500);
     await audit(device, "category.update", "category", id, { name: name.trim() });
     return NextResponse.json(data);
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { id } = await params;
 
@@ -51,10 +52,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { error } = await supabase.from("categories").delete().eq("id", id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbError("categories/[id]", error, 500);
     await audit(device, "category.delete", "category", id);
     return NextResponse.json({ ok: true });
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }

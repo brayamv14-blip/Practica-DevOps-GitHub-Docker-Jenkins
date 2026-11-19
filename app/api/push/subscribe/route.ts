@@ -17,7 +17,7 @@ function validEndpoint(value: unknown): value is string {
 export async function POST(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const body = await req.json();
     const endpoint = body?.endpoint;
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }
 
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { endpoint, prefs } = await req.json();
     if (!validEndpoint(endpoint) || typeof prefs !== "object" || prefs === null) {
@@ -96,7 +96,7 @@ export async function PATCH(req: NextRequest) {
     if (error) return NextResponse.json({ error: "No se pudieron guardar las preferencias" }, { status: 500 });
     return NextResponse.json({ ok: true, prefs: { ...(current.prefs ?? {}), ...clean } });
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }
 
@@ -104,7 +104,7 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { endpoint } = await req.json();
     if (typeof endpoint !== "string") {
@@ -119,6 +119,6 @@ export async function DELETE(req: NextRequest) {
     if (error) return NextResponse.json({ error: "No se pudo eliminar la suscripción" }, { status: 500 });
     return NextResponse.json({ ok: true });
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }

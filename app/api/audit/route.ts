@@ -8,7 +8,7 @@ import { dayEndISO, dayStartISO } from "@/lib/utils";
 export async function GET(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
     const forbidden = forbidUnlessAdmin(device);
     if (forbidden) return forbidden;
 
@@ -36,6 +36,6 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json({ data: data ?? [], count });
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }

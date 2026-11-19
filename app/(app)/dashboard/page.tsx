@@ -21,7 +21,7 @@ import {
 import type { CashRegister, Sale, VariantWithProduct } from "@/types";
 import { getCashFlows } from "@/lib/cash-flows";
 import { SalesStats } from "@/components/dashboard/SalesStats";
-import { PushToggle } from "@/components/push/PushToggle";
+import { PushToggleLazy } from "@/components/push/PushToggleLazy";
 import {
   CatalogLinkButton,
   ShoppingListButton,
@@ -377,7 +377,7 @@ export default async function DashboardPage() {
 
       <CatalogLinkButton />
 
-      <PushToggle />
+      <PushToggleLazy />
     </div>
   );
 }

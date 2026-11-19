@@ -37,6 +37,8 @@ export interface PushSendError {
   host: string;
   status: number | null;
   message: string;
+  /** Que revisar segun el codigo que devolvio el servicio push. */
+  hint?: string;
 }
 
 /**
@@ -95,6 +97,42 @@ export interface VapidStatus {
   subjectConfigured: boolean;
   /** true si la clave publica del navegador corresponde a la privada del servidor. */
   keysMatch: boolean | null;
+  /** Formato: publica = 65 bytes (P-256 sin comprimir), privada = 32 bytes. */
+  publicKeyValid: boolean | null;
+  privateKeyValid: boolean | null;
+  /** Apple rechaza (403) los subject que no son mailto: o https: con un dominio real. */
+  subjectValid: boolean;
+}
+
+/** mailto:alguien@dominio.com o https://dominio.com; sin localhost ni dominios reservados (.local, .invalid…). */
+export function isValidVapidSubject(subject: string | undefined | null): boolean {
+  const value = subject?.trim();
+  if (!value) return false;
+  const badHost = (host: string) =>
+    !host.includes(".") || /(^|\.)(local|localhost|invalid|test|internal|lan)$/i.test(host);
+  try {
+    if (/^mailto:/i.test(value)) {
+      const address = value.slice(7);
+      const m = /^[^\s@]+@([^\s@]+)$/.exec(address);
+      return !!m && !badHost(m[1]);
+    }
+    const url = new URL(value);
+    return url.protocol === "https:" && !badHost(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Subject VAPID efectivo: el configurado si es valido; si no, la URL de produccion de Vercel
+ * (https, aceptada por Apple); como ultimo recurso el configurado o un valor generico.
+ */
+export function resolveVapidSubject(): string {
+  const configuredSubject = process.env.VAPID_SUBJECT?.trim();
+  if (isValidVapidSubject(configuredSubject)) return configuredSubject!;
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (vercelHost && isValidVapidSubject(`https://${vercelHost}`)) return `https://${vercelHost}`;
+  return configuredSubject || "mailto:admin@puntobase.local";
 }
 
 export function getVapidStatus(): VapidStatus {
@@ -102,13 +140,34 @@ export function getVapidStatus(): VapidStatus {
   const privateKey = process.env.VAPID_PRIVATE_KEY?.trim();
   const keysMatch =
     publicKey && privateKey ? derivePublicKey(privateKey) === publicKey : null;
+  const publicBytes = publicKey ? fromBase64Url(publicKey) : null;
+  const privateBytes = privateKey ? fromBase64Url(privateKey) : null;
   return {
     configured: !!publicKey && !!privateKey,
     publicKeyPresent: !!publicKey,
     privateKeyPresent: !!privateKey,
     subjectConfigured: !!process.env.VAPID_SUBJECT?.trim(),
     keysMatch,
+    publicKeyValid: publicBytes ? publicBytes.length === 65 && publicBytes[0] === 4 : null,
+    privateKeyValid: privateBytes ? privateBytes.length === 32 : null,
+    subjectValid: isValidVapidSubject(resolveVapidSubject()),
   };
+}
+
+/** Pista legible segun la respuesta del servicio push (sin exponer datos sensibles). */
+export function hintForStatus(status: number | null, host: string): string | undefined {
+  const apple = host.includes("push.apple.com");
+  if (status === 401 || status === 403) {
+    return apple
+      ? "Apple rechazó la identificación VAPID: revisa que VAPID_SUBJECT sea mailto:correo@dominio-real o https://tu-sitio y que la llave pública y la privada sean del mismo par."
+      : "El servicio rechazó la identificación VAPID: revisa que las llaves sean del mismo par y que VAPID_SUBJECT sea válido.";
+  }
+  if (status === 400) return "El servicio push no entendió la solicitud: revisa las llaves VAPID.";
+  if (status === 413) return "El mensaje es demasiado grande.";
+  if (status === 429) return "Demasiados envíos seguidos: espera un momento.";
+  if (status !== null && status >= 500) return "Falla temporal del servicio push: se reintentará con el siguiente evento.";
+  if (status === null) return "No hubo respuesta del servicio push: revisa la conexión del servidor.";
+  return undefined;
 }
 
 let configured = false;
@@ -120,11 +179,7 @@ export function isPushConfigured(): boolean {
   if (!publicKey || !privateKey) return false;
 
   if (!configured) {
-    webpush.setVapidDetails(
-      process.env.VAPID_SUBJECT?.trim() || "mailto:admin@puntobase.local",
-      publicKey,
-      privateKey
-    );
+    webpush.setVapidDetails(resolveVapidSubject(), publicKey, privateKey);
     configured = true;
   }
   return true;
@@ -241,7 +296,7 @@ export async function sendPush(
           }
           result.failed++;
           const message = status ? `El servicio push respondió HTTP ${status}` : "Error de red o de configuración";
-          result.errors.push({ host, status, message });
+          result.errors.push({ host, status, message, hint: hintForStatus(status, host) });
           console.error(`[push] Envío rechazado (${host}, HTTP ${status ?? "sin respuesta"}).`);
           await supabase
             .from("push_subscriptions")

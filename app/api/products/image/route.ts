@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbError } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/server";
 import { getDeviceFromCookies } from "@/lib/auth";
 import { isCloudinaryUrl } from "@/lib/image-url";
@@ -7,7 +8,7 @@ import { isCloudinaryUrl } from "@/lib/image-url";
 export async function POST(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { product_id, image_url } = await req.json();
     if (typeof product_id !== "string" || !product_id) {
@@ -22,9 +23,9 @@ export async function POST(req: NextRequest) {
       .update({ image_url, updated_at: new Date().toISOString() })
       .eq("id", product_id);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbError("products/image", error, 500);
     return NextResponse.json({ ok: true });
   } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbError } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/server";
 import { getDeviceFromCookies } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   try {
     const device = await getDeviceFromCookies();
-    if (!device) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!device) return NextResponse.json({ error: "No autorizado. Registra este dispositivo." }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
     const limit = Math.max(1, Math.min(parseInt(searchParams.get("limit") ?? "30", 10) || 30, 200));
@@ -17,9 +18,9 @@ export async function GET(req: NextRequest) {
       .order("date", { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbError("cash-register/history", error, 500);
     return NextResponse.json({ data, count });
   } catch (err) {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Error del servidor." }, { status: 500 });
   }
 }
