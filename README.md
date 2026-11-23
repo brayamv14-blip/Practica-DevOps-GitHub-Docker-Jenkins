@@ -67,3 +67,15 @@ Marca PuntoBase, eliminación del módulo de peces y del logo original, escáner
 semáforo, transferencia pendiente con bandeja, catálogo en caché, cola offline sobre Dexie, Background
 Sync, notificaciones push, estadísticas, catálogo público, fotos con Cloudinary y corte de caja con
 desglose de transferencias.
+
+## Práctica DevOps (GitHub + Docker + Jenkins)
+
+Este repositorio incluye la automatización de la práctica integradora de *Gestión de Desarrollo de Software*:
+`Dockerfile` para contenerizar la PWA, `Jenkinsfile` con el pipeline de integración continua y un entorno de
+Jenkins listo para levantar con Docker Compose. Instrucciones completas en [`docs/DEVOPS.md`](docs/DEVOPS.md).
+
+```bash
+docker build -t puntobase:1.0 .
+docker run -d --name puntobase -p 3000:3000 --env-file .env.local puntobase:1.0
+curl http://localhost:3000/api/health
+```
